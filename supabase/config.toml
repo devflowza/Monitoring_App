@@ -1,0 +1,18 @@
+# Supabase project config (local CLI). The remote project is created/managed via
+# the Supabase MCP tools; this supports `supabase` CLI workflows where available.
+project_id = "sentinel-monitoring"
+
+[functions.ingest-email]
+verify_jwt = false
+
+[functions.ingest-drive]
+verify_jwt = false
+
+[functions.analyze]
+verify_jwt = false
+
+[functions.alert-dispatch]
+verify_jwt = false
+
+[functions.report-generate]
+verify_jwt = false
