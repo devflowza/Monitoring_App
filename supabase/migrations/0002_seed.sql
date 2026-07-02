@@ -53,18 +53,20 @@ insert into dlp_rules (name, category, match_type, pattern, severity_weight, req
 on conflict do nothing;
 
 -- --- Starter SLA rules -------------------------------------------------------
+-- Literals must be cast: UNION ALL resolves them to text, which won't
+-- implicitly coerce to the sla_rule_type enum in INSERT ... SELECT.
 insert into sla_rules (department_id, rule_type, threshold_minutes, business_hours_only, severity_weight)
-select id, 'first_response', 120, true, 60 from departments where name = 'Sales'
+select id, 'first_response'::sla_rule_type, 120, true, 60 from departments where name = 'Sales'
 union all
-select id, 'followup', 1440, true, 50 from departments where name = 'Sales'
+select id, 'followup'::sla_rule_type, 1440, true, 50 from departments where name = 'Sales'
 union all
-select id, 'quotation_turnaround', 480, true, 55 from departments where name = 'Sales'
+select id, 'quotation_turnaround'::sla_rule_type, 480, true, 55 from departments where name = 'Sales'
 union all
-select id, 'first_response', 240, true, 50 from departments where name = 'Operations'
+select id, 'first_response'::sla_rule_type, 240, true, 50 from departments where name = 'Operations'
 union all
-select id, 'ops_milestone', 1440, true, 55 from departments where name = 'Operations'
+select id, 'ops_milestone'::sla_rule_type, 1440, true, 55 from departments where name = 'Operations'
 union all
-select id, 'first_response', 480, true, 45 from departments where name = 'Finance';
+select id, 'first_response'::sla_rule_type, 480, true, 45 from departments where name = 'Finance';
 
 -- --- Default sources (dev/test = mcp single account; flip to google_admin org-wide) ---
 insert into sources (kind, mode, display_name, is_active) values
