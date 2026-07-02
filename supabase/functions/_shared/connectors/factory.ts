@@ -7,6 +7,7 @@ import { GoogleAdminGmailConnector } from './google-admin/gmail.ts';
 import { GoogleAdminDriveConnector } from './google-admin/drive.ts';
 import { McpGmailConnector } from './mcp/gmail.ts';
 import { McpDriveConnector } from './mcp/drive.ts';
+import { PayPalConnector } from './paypal/paypal.ts';
 
 export interface SourceRow {
   id: string;
@@ -26,7 +27,10 @@ export function connectorFactory(source: SourceRow, ctx: ConnectorContext): Sour
       return new McpGmailConnector(ctx);
     case 'mcp:drive':
       return new McpDriveConnector(ctx);
-    // calendar / paypal connectors land in later phases
+    case 'mcp:paypal':
+    case 'google_admin:paypal':
+      return new PayPalConnector(ctx, source.mode);
+    // calendar connector lands in a later phase
     default:
       throw new Error(`No connector registered for ${key}`);
   }

@@ -92,6 +92,7 @@ export async function getGoogleAccessToken(
 
 export const SCOPES = {
   gmailReadonly: 'https://www.googleapis.com/auth/gmail.readonly',
+  gmailSettings: 'https://www.googleapis.com/auth/gmail.settings.basic',
   driveMetadata: 'https://www.googleapis.com/auth/drive.metadata.readonly',
   driveActivity: 'https://www.googleapis.com/auth/drive.activity.readonly',
   calendarReadonly: 'https://www.googleapis.com/auth/calendar.readonly',

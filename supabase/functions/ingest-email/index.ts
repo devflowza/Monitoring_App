@@ -1,9 +1,11 @@
 // ingest-email — pull email deltas from each active gmail source and upsert
-// normalized metadata into email_threads / email_events. Idempotent (upsert on
-// provider ids); advances per-source cursors in sync_state. Invoked by pg_cron.
+// normalized metadata into email_threads / email_events / attachments, plus
+// external auto-forwarding rules. Idempotent (upsert on provider ids); advances
+// per-source cursors in sync_state. Invoked by pg_cron.
 //
-// Full message bodies are fetched ONLY when policy.monitoring_active is true
-// (the notice/DPIA go-live gate) — until then this runs metadata-first.
+// Notice-before-collection: real org-wide (google_admin) sources are skipped
+// until policy.monitoring_active is true. Full bodies are only fetched when the
+// same flag is set; analyze/ later minimizes non-flagged bodies.
 
 import { adminClient, getPolicy } from '../_shared/db.ts';
 import { connectorFactory, type SourceRow } from '../_shared/connectors/factory.ts';
@@ -42,7 +44,6 @@ async function upsertEmailEvent(
   ctx: ConnectorContext,
   contentAllowed: boolean,
 ) {
-  // Thread first (FK target).
   const { data: thread } = await db.from('email_threads')
     .upsert({
       provider_thread_id: rec.providerThreadId,
@@ -59,7 +60,7 @@ async function upsertEmailEvent(
     : { employeeId: from.employeeId, departmentId: from.departmentId };
 
   const hasContent = contentAllowed && rec.body != null;
-  await db.from('email_events').upsert({
+  const { data: ev } = await db.from('email_events').upsert({
     thread_id: thread?.id ?? null,
     provider_message_id: rec.providerMessageId,
     direction: rec.direction,
@@ -77,25 +78,46 @@ async function upsertEmailEvent(
     ),
     subject: rec.subject ?? null,
     snippet: rec.snippet ?? null,
-    // content stored only when permitted; otherwise metadata-only
+    // Body is stored inline (MVP; a Storage-encrypted blob is a later hardening)
+    // ONLY when permitted. analyze/ minimizes non-flagged bodies afterwards.
+    body_ref: hasContent ? rec.body : null,
     content_class: hasContent ? 'content' : 'metadata',
-    body_ref: null,            // body persisted by analyze/ only on a policy match
-  }, { onConflict: 'provider_message_id' });
+  }, { onConflict: 'provider_message_id' })
+    .select('id')
+    .single();
+
+  if (ev?.id && (rec.attachments?.length)) {
+    await db.from('attachments').upsert(
+      rec.attachments.map((a) => ({
+        email_event_id: ev.id,
+        filename: a.filename ?? null,
+        mime_type: a.mimeType ?? null,
+        size_bytes: a.sizeBytes ?? null,
+        sha256: a.sha256 ?? null,
+        is_sensitive_type: a.isSensitiveType ?? false,
+      })),
+      { onConflict: 'id', ignoreDuplicates: true },
+    );
+  }
 }
 
 Deno.serve(async () => {
   const db = adminClient();
   const internalDomains = await getPolicy<string[]>(db, 'internal_domains', ['visionfreights.com']);
   const personalDomains = await getPolicy<string[]>(db, 'personal_email_domains', []);
-  const contentAllowed = await getPolicy<boolean>(db, 'monitoring_active', false);
+  const monitoringActive = await getPolicy<boolean>(db, 'monitoring_active', false);
 
   const { data: sources } = await db.from('sources').select('*').eq('kind', 'gmail').eq('is_active', true);
   let totalIngested = 0;
+  let skipped = 0;
 
   for (const source of (sources ?? []) as SourceRow[]) {
+    // Notice-before-collection: don't collect real employee data pre-go-live.
+    if (source.mode === 'google_admin' && !monitoringActive) { skipped++; continue; }
+
     const ctx: ConnectorContext = {
       sourceId: source.id,
-      contentFetchAllowed: contentAllowed,
+      contentFetchAllowed: monitoringActive,
       internalDomains,
       personalDomains,
     };
@@ -105,8 +127,17 @@ Deno.serve(async () => {
       const result = await connector.pullDelta(state?.cursor ?? null, { pageLimit: PAGE_LIMIT });
       for (const rec of result.records) {
         if (rec.kind === 'email_event') {
-          await upsertEmailEvent(db, rec, ctx, contentAllowed);
+          await upsertEmailEvent(db, rec, ctx, monitoringActive);
           totalIngested++;
+        } else if (rec.kind === 'forwarding_rule') {
+          const { data: id } = await resolveIdentityId(db, rec.ownerEmail, internalDomains);
+          await db.from('forwarding_rules').insert({
+            identity_id: id.identityId,
+            rule_type: rec.ruleType,
+            destination: rec.destination ?? null,
+            is_external_destination: rec.isExternalDestination ?? false,
+            source_id: source.id,
+          });
         }
       }
       await db.from('sync_state').upsert({
@@ -121,5 +152,5 @@ Deno.serve(async () => {
     }
   }
 
-  return Response.json({ ingested: totalIngested, sources: sources?.length ?? 0 });
+  return Response.json({ ingested: totalIngested, skipped, sources: sources?.length ?? 0 });
 });

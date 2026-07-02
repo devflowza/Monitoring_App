@@ -1,0 +1,36 @@
+name: CI
+
+on:
+  push:
+    branches: [main, 'claude/**']
+  pull_request:
+
+jobs:
+  web:
+    name: Build web + shared
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+      - run: npm ci
+      - run: npm run build --workspace packages/shared
+      - run: npm run typecheck --workspace apps/web
+      - run: npm run build --workspace apps/web
+
+  edge:
+    name: Edge-function unit tests (Deno)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: denoland/setup-deno@v2
+        with:
+          deno-version: v2.x
+      - name: Run pure-logic tests
+        run: >-
+          deno test
+          supabase/functions/_shared/dlp/engine_test.ts
+          supabase/functions/_shared/risk/score_test.ts
+          supabase/functions/_shared/connectors/types_test.ts
