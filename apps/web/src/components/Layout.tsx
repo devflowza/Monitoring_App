@@ -3,7 +3,13 @@ import { useAuth } from '../lib/auth';
 
 const NAV = [
   { to: '/executive', label: 'Executive' },
+  { to: '/employees', label: 'Risk & Employees' },
+  { to: '/sla', label: 'Sales & Ops SLA' },
+  { to: '/productivity', label: 'Productivity' },
+  { to: '/finance', label: 'Finance' },
   { to: '/security', label: 'Security & DLP' },
+  { to: '/reports', label: 'Reports' },
+  { to: '/settings', label: 'Settings' },
 ];
 
 export function Layout() {

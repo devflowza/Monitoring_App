@@ -4,6 +4,13 @@ import { Layout } from './components/Layout';
 import { Login } from './routes/Login';
 import { Executive } from './routes/Executive';
 import { Security } from './routes/Security';
+import { Sla } from './routes/Sla';
+import { Productivity } from './routes/Productivity';
+import { Finance } from './routes/Finance';
+import { Reports } from './routes/Reports';
+import { Employees } from './routes/Employees';
+import { EmployeeDetail } from './routes/EmployeeDetail';
+import { Settings } from './routes/Settings';
 
 function Shell() {
   const { loading, session, configured } = useAuth();
@@ -19,7 +26,14 @@ function Shell() {
     <Routes>
       <Route element={<Layout />}>
         <Route path="/executive" element={<Executive />} />
+        <Route path="/employees" element={<Employees />} />
+        <Route path="/employees/:id" element={<EmployeeDetail />} />
+        <Route path="/sla" element={<Sla />} />
+        <Route path="/productivity" element={<Productivity />} />
+        <Route path="/finance" element={<Finance />} />
         <Route path="/security" element={<Security />} />
+        <Route path="/reports" element={<Reports />} />
+        <Route path="/settings" element={<Settings />} />
         <Route path="*" element={<Navigate to="/executive" replace />} />
       </Route>
     </Routes>

@@ -7,6 +7,7 @@
 // severities roll into the digest reports instead of paging the CEO.
 
 import { adminClient } from '../_shared/db.ts';
+import { SMTPClient } from 'https://deno.land/x/denomailer@1.6.0/mod.ts';
 
 async function sendWhatsApp(text: string): Promise<boolean> {
   const token = Deno.env.get('WHATSAPP_TOKEN');
@@ -22,13 +23,28 @@ async function sendWhatsApp(text: string): Promise<boolean> {
 }
 
 async function sendEmail(subject: string, body: string): Promise<boolean> {
-  // Production: SMTP via SMTP_URL, or Gmail API. Skeleton returns false until
-  // configured so the function stays green without credentials.
   const from = Deno.env.get('ALERT_FROM_EMAIL');
-  const smtp = Deno.env.get('SMTP_URL');
-  if (!from || !smtp) return false;
-  // TODO(phase-1): wire denomailer SMTP client here.
-  return false;
+  const smtp = Deno.env.get('SMTP_URL');           // smtp(s)://user:pass@host:port
+  const to = Deno.env.get('ALERT_EMAIL_TO') ?? from;
+  if (!from || !smtp || !to) return false;          // not configured → skip cleanly
+  try {
+    const u = new URL(smtp);
+    const client = new SMTPClient({
+      connection: {
+        hostname: u.hostname,
+        port: Number(u.port || 587),
+        tls: u.protocol === 'smtps:',
+        auth: u.username
+          ? { username: decodeURIComponent(u.username), password: decodeURIComponent(u.password) }
+          : undefined,
+      },
+    });
+    await client.send({ from, to, subject, content: body });
+    await client.close();
+    return true;
+  } catch (_e) {
+    return false;
+  }
 }
 
 Deno.serve(async () => {
