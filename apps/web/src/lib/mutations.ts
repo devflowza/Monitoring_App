@@ -61,6 +61,36 @@ export async function requestReport(type: string): Promise<MutationResult> {
   }
 }
 
+/** DSAR subject-data export (ceo/admin; audited). Returns the JSON document. */
+export async function dsarExport(employeeId: string): Promise<{ data: unknown | null; error: string | null }> {
+  try {
+    const { data, error } = await supabase.rpc('app_dsar_export', { p_employee_id: employeeId });
+    return { data: data ?? null, error: error ? error.message : null };
+  } catch (e) {
+    return { data: null, error: e instanceof Error ? e.message : String(e) };
+  }
+}
+
+/** DSAR erasure (ceo/admin; audited; requires justification). */
+export async function dsarErase(employeeId: string, justification: string): Promise<MutationResult> {
+  try {
+    const { error } = await supabase.rpc('app_dsar_erase', { p_employee_id: employeeId, p_justification: justification });
+    return { error: error ? error.message : null };
+  } catch (e) {
+    return { error: e instanceof Error ? e.message : String(e) };
+  }
+}
+
+/** Toggle an employee's is_monitored kill switch (ceo/admin; audited). */
+export async function setEmployeeMonitored(employeeId: string, monitored: boolean): Promise<MutationResult> {
+  try {
+    const { error } = await supabase.rpc('app_set_monitored', { p_employee_id: employeeId, p_monitored: monitored });
+    return { error: error ? error.message : null };
+  } catch (e) {
+    return { error: e instanceof Error ? e.message : String(e) };
+  }
+}
+
 /** Assign / unassign an alert to an operator (RLS: ceo/admin/analyst). */
 export async function assignAlert(alertId: string, appUserId: string | null): Promise<MutationResult> {
   return runUpdate(supabase.from('alerts').update({ assigned_to: appUserId }).eq('id', alertId).select('id'));

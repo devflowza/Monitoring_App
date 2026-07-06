@@ -129,6 +129,7 @@ export interface Employee {
   primary_email: string;
   department_id: string | null;
   employment_status: string;
+  is_monitored?: boolean;
 }
 
 export interface DlpRule {

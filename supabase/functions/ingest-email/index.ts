@@ -44,6 +44,7 @@ async function upsertEmailEvent(
   rec: NormalizedEmailEvent,
   ctx: ConnectorContext,
   contentAllowed: boolean,
+  unmonitored: Set<string>,
 ) {
   const { data: thread } = await db.from('email_threads')
     .upsert({
@@ -60,7 +61,10 @@ async function upsertEmailEvent(
     ? tos.find((t) => t.employeeId) ?? { employeeId: null, departmentId: null }
     : { employeeId: from.employeeId, departmentId: from.departmentId };
 
-  const hasContent = contentAllowed && rec.body != null;
+  // Per-person kill switch: never store body content for an opted-out employee,
+  // even when monitoring is active. Makes the DSAR erasure remedy real.
+  const ownerUnmonitored = owner.employeeId ? unmonitored.has(owner.employeeId) : false;
+  const hasContent = contentAllowed && rec.body != null && !ownerUnmonitored;
   const { data: ev } = await db.from('email_events').upsert({
     thread_id: thread?.id ?? null,
     provider_message_id: rec.providerMessageId,
@@ -110,6 +114,9 @@ Deno.serve(async (req) => {
   const personalDomains = await getPolicy<string[]>(db, 'personal_email_domains', []);
   const monitoringActive = await getPolicy<boolean>(db, 'monitoring_active', false);
 
+  const { data: unmon } = await db.from('employees').select('id').eq('is_monitored', false);
+  const unmonitored = new Set((unmon ?? []).map((e) => e.id as string));
+
   const { data: sources } = await db.from('sources').select('*').eq('kind', 'gmail').eq('is_active', true);
   let totalIngested = 0;
   let skipped = 0;
@@ -130,7 +137,7 @@ Deno.serve(async (req) => {
       const result = await connector.pullDelta(state?.cursor ?? null, { pageLimit: PAGE_LIMIT });
       for (const rec of result.records) {
         if (rec.kind === 'email_event') {
-          await upsertEmailEvent(db, rec, ctx, monitoringActive);
+          await upsertEmailEvent(db, rec, ctx, monitoringActive, unmonitored);
           totalIngested++;
         } else if (rec.kind === 'forwarding_rule') {
           // NB: resolveIdentityId returns a plain object, NOT a Supabase

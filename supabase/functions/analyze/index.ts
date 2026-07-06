@@ -66,6 +66,10 @@ Deno.serve(async (req) => {
   const { data: rules } = await db.from('dlp_rules').select('*').eq('is_active', true);
   const dlpRules = (rules ?? []) as DlpRule[];
 
+  // Per-person kill switch: never inspect an opted-out employee's mail.
+  const { data: unmon } = await db.from('employees').select('id').eq('is_monitored', false);
+  const unmonitored = new Set((unmon ?? []).map((e) => e.id as string));
+
   const since = new Date(Date.now() - 24 * 3600 * 1000).toISOString();
 
   // --- 1-3. DLP over recent outbound email to external recipients ----------
@@ -78,6 +82,7 @@ Deno.serve(async (req) => {
 
   let dlpAlerts = 0;
   for (const ev of emails ?? []) {
+    if (ev.owner_employee_id && unmonitored.has(ev.owner_employee_id)) continue;
     const att = await db.from('attachments').select('filename').eq('email_event_id', ev.id);
     const hasBody = ev.content_class === 'content' && ev.body_ref;
     const matches = scanDlp(dlpRules, {
