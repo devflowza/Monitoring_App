@@ -6,8 +6,11 @@
 
 import { adminClient } from '../_shared/db.ts';
 import { generateReport } from '../_shared/claude/index.ts';
+import { guardRequest } from '../_shared/authz.ts';
 
 Deno.serve(async (req) => {
+  const denied = guardRequest(req);
+  if (denied) return denied;
   const db = adminClient();
   const body = await req.json().catch(() => ({})) as { type?: string };
   const type = body.type ?? 'daily';

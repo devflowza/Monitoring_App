@@ -3,6 +3,7 @@ import { supabase, isConfigured } from '../lib/supabase';
 import { useAuth } from '../lib/auth';
 import type { DlpRule, Policy, RiskWeight, SlaRule } from '../lib/types';
 import { setDlpRuleActive, setPolicyValue, setRiskWeight, setSlaThreshold } from '../lib/mutations';
+import { useToast } from '../components/Toast';
 
 function boolPolicy(policies: Policy[], key: string): boolean {
   return Boolean(policies.find((p) => p.policy_key === key)?.value_json?.value);
@@ -10,6 +11,7 @@ function boolPolicy(policies: Policy[], key: string): boolean {
 
 export function Settings() {
   const { hasRole } = useAuth();
+  const { notify, reportError } = useToast();
   const canWrite = hasRole(['ceo', 'admin']);
   const [policies, setPolicies] = useState<Policy[]>([]);
   const [dlp, setDlp] = useState<DlpRule[]>([]);
@@ -37,11 +39,10 @@ export function Settings() {
 
   async function toggleGate(key: string, next: boolean) {
     if (key === 'monitoring_active' && next && !noticeDelivered) {
-      alert('Cannot activate monitoring: employee notice + DPIA must be recorded first (set "Notice delivered").');
+      notify('Cannot activate monitoring: employee notice + DPIA must be recorded first (set "Notice delivered").', 'error');
       return;
     }
-    await setPolicyValue(key, next);
-    await load();
+    if (reportError(await setPolicyValue(key, next), 'Saved.')) await load();
   }
 
   return (
@@ -86,7 +87,7 @@ export function Settings() {
                   <td className="px-3 py-2 text-slate-400">{r.severity_weight}</td>
                   <td className="px-3 py-2">
                     <input type="checkbox" checked={r.is_active} disabled={!canWrite}
-                      onChange={async (e) => { await setDlpRuleActive(r.id, e.target.checked); await load(); }} />
+                      onChange={async (e) => { if (reportError(await setDlpRuleActive(r.id, e.target.checked), 'Saved.')) await load(); }} />
                   </td>
                 </tr>
               ))}
@@ -99,10 +100,10 @@ export function Settings() {
       <div className="grid grid-cols-1 gap-6 lg:grid-cols-2">
         <EditableList title="Risk weights" canWrite={canWrite}
           rows={weights.map((w) => ({ id: w.id, label: w.factor_key, value: w.weight }))}
-          onSave={async (id, v) => { await setRiskWeight(id, v); await load(); }} step={0.5} />
+          onSave={async (id, v) => { if (reportError(await setRiskWeight(id, v), 'Saved.')) await load(); }} step={0.5} />
         <EditableList title="SLA thresholds (minutes)" canWrite={canWrite}
           rows={sla.map((s) => ({ id: s.id, label: s.rule_type, value: s.threshold_minutes }))}
-          onSave={async (id, v) => { await setSlaThreshold(id, Math.round(v)); await load(); }} step={30} />
+          onSave={async (id, v) => { if (reportError(await setSlaThreshold(id, Math.round(v)), 'Saved.')) await load(); }} step={30} />
       </div>
     </div>
   );

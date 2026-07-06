@@ -8,6 +8,7 @@
 import { adminClient } from '../_shared/db.ts';
 import { computeRisk, type RiskFactor, type RiskWeights } from '../_shared/risk/score.ts';
 import { raiseAlert } from '../_shared/alerts.ts';
+import { guardRequest } from '../_shared/authz.ts';
 
 const TYPE_TO_FACTOR: Record<string, string> = {
   dlp: 'dlp_incident',
@@ -22,7 +23,9 @@ const TYPE_TO_FACTOR: Record<string, string> = {
 };
 const CAP = 5; // incidents/30d that saturate a factor at 1.0
 
-Deno.serve(async () => {
+Deno.serve(async (req) => {
+  const denied = guardRequest(req);
+  if (denied) return denied;
   const db = adminClient();
   const { data: weightRows } = await db.from('risk_weights').select('factor_key, weight');
   const weights: RiskWeights = {};

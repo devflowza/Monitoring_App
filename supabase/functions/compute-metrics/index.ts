@@ -6,13 +6,16 @@
 
 import { adminClient } from '../_shared/db.ts';
 import { raiseAlert, type Severity } from '../_shared/alerts.ts';
+import { guardRequest } from '../_shared/authz.ts';
 
 interface Ev {
   id: string; thread_id: string | null; direction: string; sent_at: string | null;
   owner_employee_id: string | null; owner_department_id: string | null;
 }
 
-Deno.serve(async () => {
+Deno.serve(async (req) => {
+  const denied = guardRequest(req);
+  if (denied) return denied;
   const db = adminClient();
   const { data: slaRules } = await db.from('sla_rules').select('*').eq('is_active', true);
   const firstResp = new Map<string | null, number>();

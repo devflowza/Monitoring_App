@@ -10,6 +10,7 @@
 import { adminClient, getPolicy } from '../_shared/db.ts';
 import { connectorFactory, type SourceRow } from '../_shared/connectors/factory.ts';
 import type { ConnectorContext, NormalizedEmailEvent } from '../_shared/connectors/types.ts';
+import { guardRequest } from '../_shared/authz.ts';
 
 const PAGE_LIMIT = 100;
 
@@ -101,7 +102,9 @@ async function upsertEmailEvent(
   }
 }
 
-Deno.serve(async () => {
+Deno.serve(async (req) => {
+  const denied = guardRequest(req);
+  if (denied) return denied;
   const db = adminClient();
   const internalDomains = await getPolicy<string[]>(db, 'internal_domains', ['visionfreights.com']);
   const personalDomains = await getPolicy<string[]>(db, 'personal_email_domains', []);
@@ -130,14 +133,20 @@ Deno.serve(async () => {
           await upsertEmailEvent(db, rec, ctx, monitoringActive);
           totalIngested++;
         } else if (rec.kind === 'forwarding_rule') {
-          const { data: id } = await resolveIdentityId(db, rec.ownerEmail, internalDomains);
-          await db.from('forwarding_rules').insert({
-            identity_id: id.identityId,
+          // NB: resolveIdentityId returns a plain object, NOT a Supabase
+          // response — destructuring `{ data }` here previously crashed the
+          // whole source run the moment any monitored user enabled forwarding.
+          const owner = await resolveIdentityId(db, rec.ownerEmail, internalDomains);
+          // Upsert (not insert) so repeated detections refresh last_seen_at
+          // instead of accumulating duplicate rows every cron tick.
+          await db.from('forwarding_rules').upsert({
+            identity_id: owner.identityId,
             rule_type: rec.ruleType,
             destination: rec.destination ?? null,
             is_external_destination: rec.isExternalDestination ?? false,
             source_id: source.id,
-          });
+            last_seen_at: new Date().toISOString(),
+          }, { onConflict: 'identity_id,rule_type,destination' });
         }
       }
       await db.from('sync_state').upsert({

@@ -1,5 +1,6 @@
 import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
 import { AuthProvider, useAuth } from './lib/auth';
+import { ToastProvider } from './components/Toast';
 import { Layout } from './components/Layout';
 import { Login } from './routes/Login';
 import { Executive } from './routes/Executive';
@@ -43,9 +44,11 @@ function Shell() {
 export default function App() {
   return (
     <AuthProvider>
-      <BrowserRouter>
-        <Shell />
-      </BrowserRouter>
+      <ToastProvider>
+        <BrowserRouter>
+          <Shell />
+        </BrowserRouter>
+      </ToastProvider>
     </AuthProvider>
   );
 }
