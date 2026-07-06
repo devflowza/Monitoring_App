@@ -23,7 +23,9 @@ insert into policies (policy_key, value_json) values
   ('metadata_retention_days',  '{"value": 365}'),
   ('business_hours',           '{"tz": "Asia/Dubai", "start": "08:00", "end": "18:00", "workdays": [1,2,3,4,5]}'),
   ('personal_email_domains',   '{"value": ["gmail.com","yahoo.com","hotmail.com","outlook.com","icloud.com","protonmail.com"]}'),
-  ('internal_domains',         '{"value": ["visionfreights.com"]}')
+  ('internal_domains',         '{"value": ["visionfreights.com"]}'),
+  ('dlp_confidence_min',       '{"value": 0.5}'),      -- min AI confidence to confirm a DLP hit at full severity
+  ('alert_channel_verbosity',  '{"value": "minimal"}') -- 'minimal' | 'summary' (email only) for push envelopes
 on conflict (policy_key, jurisdiction) do nothing;
 
 -- --- Risk-model weights (tunable, auditable) ---------------------------------

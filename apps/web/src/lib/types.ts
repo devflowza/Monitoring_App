@@ -16,6 +16,50 @@ export interface Alert {
   evidence_json: Record<string, unknown>;
   first_seen_at: string;
   last_seen_at: string;
+  assigned_to?: string | null;
+  dispatch_status?: string | null;
+}
+
+export interface AlertNote {
+  id: string;
+  alert_id: string;
+  author_app_user_id: string | null;
+  note: string;
+  created_at: string;
+}
+
+export interface RevealedContent {
+  subject: string | null;
+  snippet: string | null;
+  body: string | null;
+}
+
+export interface Source {
+  id: string;
+  kind: string;
+  mode: string;
+  display_name: string;
+  is_active: boolean;
+}
+
+export interface SyncState {
+  source_id: string;
+  cursor: string | null;
+  last_run_at: string | null;
+  last_status: string | null;
+  error_detail: string | null;
+  updated_at: string;
+}
+
+export interface JobRun {
+  id: string;
+  function_name: string;
+  started_at: string;
+  finished_at: string | null;
+  status: string;
+  records_processed: number | null;
+  alerts_raised: number | null;
+  error_detail: string | null;
 }
 
 export interface AuditEntry {
@@ -59,12 +103,22 @@ export interface FinanceEvent {
   is_suspicious: boolean;
 }
 
+export interface Recommendation {
+  priority: 'high' | 'medium' | 'low';
+  title: string;
+  rationale: string;
+  related_alert_ids?: string[];
+}
+
 export interface Report {
   id: string;
   report_type: string;
+  scope_type?: string;
+  scope_id?: string | null;
   period_start: string | null;
   period_end: string | null;
   narrative_md: string | null;
+  recommendations_json?: Recommendation[];
   status: string;
   created_at: string;
 }
@@ -75,6 +129,7 @@ export interface Employee {
   primary_email: string;
   department_id: string | null;
   employment_status: string;
+  is_monitored?: boolean;
 }
 
 export interface DlpRule {
@@ -105,4 +160,14 @@ export interface RiskWeight {
 export interface Policy {
   policy_key: string;
   value_json: { value?: unknown } & Record<string, unknown>;
+}
+
+export interface DlpRuleStat {
+  rule_id: string;
+  name: string;
+  category: string;
+  fired: number;
+  false_positives: number;
+  resolved: number;
+  fp_rate: number;
 }

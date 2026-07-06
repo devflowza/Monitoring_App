@@ -5,8 +5,11 @@
 
 import { adminClient, getPolicy } from '../_shared/db.ts';
 import { listDirectoryUsers } from '../_shared/connectors/google-admin/directory.ts';
+import { guardRequest } from '../_shared/authz.ts';
 
-Deno.serve(async () => {
+Deno.serve(async (req) => {
+  const denied = guardRequest(req);
+  if (denied) return denied;
   const db = adminClient();
   if (!(await getPolicy<boolean>(db, 'monitoring_active', false))) {
     return Response.json({ skipped: 'monitoring_active is off' });

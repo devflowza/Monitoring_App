@@ -1,22 +1,22 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useMemo } from 'react';
 import { BarChart, Bar, XAxis, YAxis, ResponsiveContainer, Tooltip, Cell } from 'recharts';
-import { supabase, isConfigured } from '../lib/supabase';
+import { supabase } from '../lib/supabase';
 import type { Alert, Severity } from '../lib/types';
 import { StatCard } from '../components/StatCard';
 import { AlertFeed } from '../components/AlertFeed';
+import { useSupabaseQuery } from '../lib/useSupabaseQuery';
+import { QueryBoundary } from '../components/QueryState';
 
 const SEV_COLOR: Record<Severity, string> = {
   critical: '#f87171', high: '#fb923c', medium: '#fde047', low: '#38bdf8', info: '#94a3b8',
 };
 
 export function Executive() {
-  const [alerts, setAlerts] = useState<Alert[]>([]);
-
-  useEffect(() => {
-    if (!isConfigured) return;
-    supabase.from('alerts').select('*').eq('status', 'open').limit(1000)
-      .then(({ data }) => setAlerts((data ?? []) as Alert[]));
-  }, []);
+  const q = useSupabaseQuery<Alert[]>(
+    () => supabase.from('alerts').select('*').eq('status', 'open').limit(1000),
+    [],
+  );
+  const alerts = q.data ?? [];
 
   const counts = useMemo(() => {
     const c: Record<Severity, number> = { critical: 0, high: 0, medium: 0, low: 0, info: 0 };
@@ -34,14 +34,14 @@ export function Executive() {
       <h1 className="mb-1 text-2xl font-bold text-slate-100">Executive Dashboard</h1>
       <p className="mb-5 text-sm text-slate-500">Real-time risk, compliance & security posture.</p>
 
-      <div className="mb-6 grid grid-cols-2 gap-4 md:grid-cols-4">
-        <StatCard label="Critical incidents" value={counts.critical} tone={counts.critical ? 'danger' : 'ok'} sub="open" />
-        <StatCard label="High severity" value={counts.high} tone={counts.high ? 'warn' : 'ok'} sub="open" />
-        <StatCard label="Data-leak (DLP)" value={dlpCount} tone={dlpCount ? 'warn' : 'ok'} sub="flagged emails" />
-        <StatCard label="External sharing" value={exfilCount} tone={exfilCount ? 'warn' : 'ok'} sub="files exposed" />
-      </div>
+      <QueryBoundary loading={q.loading} error={q.error} onRetry={q.reload}>
+        <div className="mb-6 grid grid-cols-2 gap-4 md:grid-cols-4">
+          <StatCard label="Critical incidents" value={counts.critical} tone={counts.critical ? 'danger' : 'ok'} sub="open" />
+          <StatCard label="High severity" value={counts.high} tone={counts.high ? 'warn' : 'ok'} sub="open" />
+          <StatCard label="Data-leak (DLP)" value={dlpCount} tone={dlpCount ? 'warn' : 'ok'} sub="flagged emails" />
+          <StatCard label="External sharing" value={exfilCount} tone={exfilCount ? 'warn' : 'ok'} sub="files exposed" />
+        </div>
 
-      <div className="grid grid-cols-1 gap-6 lg:grid-cols-2">
         <div className="rounded-xl border border-edge bg-panel p-4">
           <div className="mb-3 text-sm font-semibold text-slate-200">Open alerts by severity</div>
           <div style={{ height: 240 }}>
@@ -57,11 +57,11 @@ export function Executive() {
             </ResponsiveContainer>
           </div>
         </div>
+      </QueryBoundary>
 
-        <div>
-          <div className="mb-3 text-sm font-semibold text-slate-200">Live incident feed</div>
-          <AlertFeed limit={15} />
-        </div>
+      <div className="mt-6">
+        <div className="mb-3 text-sm font-semibold text-slate-200">Live incident feed</div>
+        <AlertFeed limit={15} />
       </div>
     </div>
   );

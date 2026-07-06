@@ -5,14 +5,23 @@
 import { adminClient, getPolicy } from '../_shared/db.ts';
 import { connectorFactory, type SourceRow } from '../_shared/connectors/factory.ts';
 import type { ConnectorContext } from '../_shared/connectors/types.ts';
+import { guardRequest } from '../_shared/authz.ts';
 
-Deno.serve(async () => {
+Deno.serve(async (req) => {
+  const denied = guardRequest(req);
+  if (denied) return denied;
   const db = adminClient();
   const internalDomains = await getPolicy<string[]>(db, 'internal_domains', ['visionfreights.com']);
+  const monitoringActive = await getPolicy<boolean>(db, 'monitoring_active', false);
   const { data: sources } = await db.from('sources').select('*').eq('kind', 'drive').eq('is_active', true);
   let total = 0;
+  let skipped = 0;
 
   for (const source of (sources ?? []) as SourceRow[]) {
+    // Notice-before-collection: don't collect real org-wide sharing data
+    // pre-go-live (mirrors the gate in ingest-email).
+    if (source.mode === 'google_admin' && !monitoringActive) { skipped++; continue; }
+
     const ctx: ConnectorContext = {
       sourceId: source.id, contentFetchAllowed: false, internalDomains, personalDomains: [],
     };
@@ -22,7 +31,9 @@ Deno.serve(async () => {
       const result = await connector.pullDelta(state?.cursor ?? null, { pageLimit: 100 });
       for (const rec of result.records) {
         if (rec.kind === 'file_permission') {
-          await db.from('file_permissions').insert({
+          // Upsert (not insert) so re-scans refresh last_seen_at instead of
+          // accumulating duplicate rows — the Drive cursor resets each run.
+          await db.from('file_permissions').upsert({
             source_id: source.id,
             provider_file_id: rec.providerFileId,
             file_name: rec.fileName ?? null,
@@ -31,7 +42,8 @@ Deno.serve(async () => {
             is_external: rec.isExternal ?? false,
             is_public_link: rec.isPublicLink ?? false,
             role: rec.role ?? null,
-          });
+            last_seen_at: new Date().toISOString(),
+          }, { onConflict: 'source_id,provider_file_id,grantee' });
           total++;
         }
       }
@@ -46,5 +58,5 @@ Deno.serve(async () => {
       }, { onConflict: 'source_id' });
     }
   }
-  return Response.json({ ingested: total });
+  return Response.json({ ingested: total, skipped });
 });

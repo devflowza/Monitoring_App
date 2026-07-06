@@ -1,5 +1,6 @@
 import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
 import { AuthProvider, useAuth } from './lib/auth';
+import { ToastProvider } from './components/Toast';
 import { Layout } from './components/Layout';
 import { Login } from './routes/Login';
 import { Executive } from './routes/Executive';
@@ -11,6 +12,7 @@ import { Reports } from './routes/Reports';
 import { Employees } from './routes/Employees';
 import { EmployeeDetail } from './routes/EmployeeDetail';
 import { Settings } from './routes/Settings';
+import { System } from './routes/System';
 
 function Shell() {
   const { loading, session, configured } = useAuth();
@@ -33,6 +35,7 @@ function Shell() {
         <Route path="/finance" element={<Finance />} />
         <Route path="/security" element={<Security />} />
         <Route path="/reports" element={<Reports />} />
+        <Route path="/system" element={<System />} />
         <Route path="/settings" element={<Settings />} />
         <Route path="*" element={<Navigate to="/executive" replace />} />
       </Route>
@@ -43,9 +46,11 @@ function Shell() {
 export default function App() {
   return (
     <AuthProvider>
-      <BrowserRouter>
-        <Shell />
-      </BrowserRouter>
+      <ToastProvider>
+        <BrowserRouter>
+          <Shell />
+        </BrowserRouter>
+      </ToastProvider>
     </AuthProvider>
   );
 }

@@ -21,36 +21,27 @@ export interface RaiseAlertInput {
   dedupKey: string;
 }
 
-export async function raiseAlert(db: SupabaseClient, input: RaiseAlertInput): Promise<'created' | 'deduped'> {
-  const now = new Date().toISOString();
-  const { data: existing } = await db
-    .from('alerts')
-    .select('id, occurrence_count')
-    .eq('dedup_key', input.dedupKey)
-    .maybeSingle();
-
-  if (existing) {
-    await db.from('alerts')
-      .update({ occurrence_count: (existing.occurrence_count ?? 1) + 1, last_seen_at: now })
-      .eq('id', existing.id);
-    return 'deduped';
-  }
-
-  await db.from('alerts').insert({
-    alert_type: input.alertType,
-    severity: input.severity,
-    status: 'open',
-    employee_id: input.employeeId ?? null,
-    department_id: input.departmentId ?? null,
-    source_event_table: input.sourceEventTable ?? null,
-    source_event_id: input.sourceEventId ?? null,
-    rule_id: input.ruleId ?? null,
-    title: input.title,
-    summary: input.summary ?? null,
-    evidence_json: input.evidence ?? {},
-    dedup_key: input.dedupKey,
-    first_seen_at: now,
-    last_seen_at: now,
+export async function raiseAlert(db: SupabaseClient, input: RaiseAlertInput): Promise<'ok' | 'error'> {
+  // Atomic upsert-or-increment via app_raise_alert — no check-then-insert race,
+  // no lost occurrence_count increments (see migration 0005).
+  const { error } = await db.rpc('app_raise_alert', {
+    p: {
+      alert_type: input.alertType,
+      severity: input.severity,
+      employee_id: input.employeeId ?? null,
+      department_id: input.departmentId ?? null,
+      source_event_table: input.sourceEventTable ?? null,
+      source_event_id: input.sourceEventId ?? null,
+      rule_id: input.ruleId ?? null,
+      title: input.title,
+      summary: input.summary ?? null,
+      evidence: input.evidence ?? {},
+      dedup_key: input.dedupKey,
+    },
   });
-  return 'created';
+  if (error) {
+    console.error(`[alerts] raiseAlert failed for ${input.dedupKey}: ${error.message}`);
+    return 'error';
+  }
+  return 'ok';
 }

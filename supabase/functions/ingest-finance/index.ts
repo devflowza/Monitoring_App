@@ -5,8 +5,11 @@ import { adminClient, getPolicy } from '../_shared/db.ts';
 import { connectorFactory, type SourceRow } from '../_shared/connectors/factory.ts';
 import type { ConnectorContext } from '../_shared/connectors/types.ts';
 import { raiseAlert } from '../_shared/alerts.ts';
+import { guardRequest } from '../_shared/authz.ts';
 
-Deno.serve(async () => {
+Deno.serve(async (req) => {
+  const denied = guardRequest(req);
+  if (denied) return denied;
   const db = adminClient();
   const internalDomains = await getPolicy<string[]>(db, 'internal_domains', ['visionfreights.com']);
   const { data: sources } = await db.from('sources').select('*').eq('kind', 'paypal').eq('is_active', true);

@@ -118,3 +118,63 @@ export async function generateReport(system: string, dataDigest: string): Promis
     return null;
   }
 }
+
+export interface StructuredReport {
+  headline: string;
+  narrative_md: string;
+  recommendations: Array<{
+    priority: 'high' | 'medium' | 'low';
+    title: string;
+    rationale: string;
+    related_alert_ids?: string[];
+  }>;
+}
+
+/**
+ * Structured executive report: same Opus + adaptive-thinking streaming path, but
+ * constrained to a JSON schema so the narrative AND a prioritized, alert-linked
+ * recommendation list come back together (populating reports.recommendations_json
+ * for drill-through). Returns null on refusal/parse failure so the caller can
+ * fall back to a degraded-but-honest report.
+ */
+export async function generateStructuredReport(system: string, dataDigest: string): Promise<StructuredReport | null> {
+  const schema = {
+    type: 'object',
+    additionalProperties: false,
+    required: ['headline', 'narrative_md', 'recommendations'],
+    properties: {
+      headline: { type: 'string' },
+      narrative_md: { type: 'string' },
+      recommendations: {
+        type: 'array',
+        items: {
+          type: 'object',
+          additionalProperties: false,
+          required: ['priority', 'title', 'rationale'],
+          properties: {
+            priority: { type: 'string', enum: ['high', 'medium', 'low'] },
+            title: { type: 'string' },
+            rationale: { type: 'string' },
+            related_alert_ids: { type: 'array', items: { type: 'string' } },
+          },
+        },
+      },
+    },
+  };
+  try {
+    const stream = claude().messages.stream({
+      model: MODELS.opus,
+      max_tokens: 32000,
+      thinking: { type: 'adaptive' },
+      output_config: { effort: 'high', format: { type: 'json_schema', schema } },
+      system: [{ type: 'text', text: system, cache_control: { type: 'ephemeral' } }],
+      messages: [{ role: 'user', content: dataDigest }],
+    });
+    const final = await stream.finalMessage();
+    if (final.stop_reason === 'refusal') return null;
+    const text = final.content.filter((b): b is Anthropic.TextBlock => b.type === 'text').map((b) => b.text).join('');
+    return JSON.parse(text) as StructuredReport;
+  } catch (_e) {
+    return null;
+  }
+}
