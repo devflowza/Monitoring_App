@@ -51,6 +51,16 @@ export async function setSourceActive(id: string, isActive: boolean): Promise<Mu
   return runUpdate(supabase.from('sources').update({ is_active: isActive }).eq('id', id).select('id'));
 }
 
+/** Request on-demand report generation (role-gated definer that invokes the edge fn). */
+export async function requestReport(type: string): Promise<MutationResult> {
+  try {
+    const { error } = await supabase.rpc('app_request_report', { p_type: type });
+    return { error: error ? error.message : null };
+  } catch (e) {
+    return { error: e instanceof Error ? e.message : String(e) };
+  }
+}
+
 /** Assign / unassign an alert to an operator (RLS: ceo/admin/analyst). */
 export async function assignAlert(alertId: string, appUserId: string | null): Promise<MutationResult> {
   return runUpdate(supabase.from('alerts').update({ assigned_to: appUserId }).eq('id', alertId).select('id'));

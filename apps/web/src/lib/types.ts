@@ -103,12 +103,22 @@ export interface FinanceEvent {
   is_suspicious: boolean;
 }
 
+export interface Recommendation {
+  priority: 'high' | 'medium' | 'low';
+  title: string;
+  rationale: string;
+  related_alert_ids?: string[];
+}
+
 export interface Report {
   id: string;
   report_type: string;
+  scope_type?: string;
+  scope_id?: string | null;
   period_start: string | null;
   period_end: string | null;
   narrative_md: string | null;
+  recommendations_json?: Recommendation[];
   status: string;
   created_at: string;
 }
