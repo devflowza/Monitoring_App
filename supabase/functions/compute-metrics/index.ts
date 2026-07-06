@@ -4,7 +4,7 @@
 // productivity, writing metrics_daily and raising sla_breach alerts.
 // Invoked by pg_cron. (Business-hours clamping is a planned refinement.)
 
-import { adminClient } from '../_shared/db.ts';
+import { adminClient, withRun } from '../_shared/db.ts';
 import { raiseAlert, type Severity } from '../_shared/alerts.ts';
 import { guardRequest } from '../_shared/authz.ts';
 
@@ -17,6 +17,7 @@ Deno.serve(async (req) => {
   const denied = guardRequest(req);
   if (denied) return denied;
   const db = adminClient();
+  const result = await withRun(db, 'compute-metrics', async () => {
   const { data: slaRules } = await db.from('sla_rules').select('*').eq('is_active', true);
   const firstResp = new Map<string | null, number>();
   for (const r of slaRules ?? []) if (r.rule_type === 'first_response') firstResp.set(r.department_id, r.threshold_minutes);
@@ -108,5 +109,7 @@ Deno.serve(async (req) => {
   }
   for (const [emp, vol] of volByEmp) await put(emp, 'emails_out', vol);
 
-  return Response.json({ slaAlerts, metricsWritten });
+  return { recordsProcessed: metricsWritten, alertsRaised: slaAlerts, detail: { slaAlerts, metricsWritten } };
+  });
+  return Response.json(result.detail);
 });

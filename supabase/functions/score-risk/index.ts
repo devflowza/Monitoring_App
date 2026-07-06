@@ -5,7 +5,7 @@
 // number (keeps it explainable); it only narrates high scores elsewhere.
 // Invoked nightly by pg_cron.
 
-import { adminClient } from '../_shared/db.ts';
+import { adminClient, withRun } from '../_shared/db.ts';
 import { computeRisk, type RiskFactor, type RiskWeights } from '../_shared/risk/score.ts';
 import { raiseAlert } from '../_shared/alerts.ts';
 import { guardRequest } from '../_shared/authz.ts';
@@ -27,6 +27,7 @@ Deno.serve(async (req) => {
   const denied = guardRequest(req);
   if (denied) return denied;
   const db = adminClient();
+  const result = await withRun(db, 'score-risk', async () => {
   const { data: weightRows } = await db.from('risk_weights').select('factor_key, weight');
   const weights: RiskWeights = {};
   for (const w of weightRows ?? []) weights[w.factor_key] = Number(w.weight);
@@ -105,5 +106,7 @@ Deno.serve(async (req) => {
     );
   }
 
-  return Response.json({ scored });
+  return { recordsProcessed: scored, detail: { scored } };
+  });
+  return Response.json(result.detail);
 });

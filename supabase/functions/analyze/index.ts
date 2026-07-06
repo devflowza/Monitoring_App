@@ -10,7 +10,7 @@
 //   5. external auto-forwarding alerts over forwarding_rules
 // All evidence is metadata-only; raised alerts are deduped.
 
-import { adminClient, getPolicy } from '../_shared/db.ts';
+import { adminClient, getPolicy, withRun } from '../_shared/db.ts';
 import { scanDlp, type DlpRule } from '../_shared/dlp/engine.ts';
 import { classify, MODELS } from '../_shared/claude/index.ts';
 import { raiseAlert, type Severity } from '../_shared/alerts.ts';
@@ -60,6 +60,7 @@ Deno.serve(async (req) => {
   const denied = guardRequest(req);
   if (denied) return denied;
   const db = adminClient();
+  const result = await withRun(db, 'analyze', async () => {
   const storeAllBodies = await getPolicy<boolean>(db, 'store_all_bodies', false);
   const confidenceMin = await getPolicy<number>(db, 'dlp_confidence_min', 0.5);
   const { data: rules } = await db.from('dlp_rules').select('*').eq('is_active', true);
@@ -202,5 +203,7 @@ Deno.serve(async (req) => {
     fwdAlerts++;
   }
 
-  return Response.json({ dlpAlerts, shareAlerts, fwdAlerts });
+  return { alertsRaised: dlpAlerts + shareAlerts + fwdAlerts, detail: { dlpAlerts, shareAlerts, fwdAlerts } };
+  });
+  return Response.json(result.detail);
 });

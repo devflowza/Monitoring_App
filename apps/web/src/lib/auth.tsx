@@ -7,6 +7,8 @@ export type Role = 'ceo' | 'admin' | 'dept_manager' | 'security_analyst' | 'view
 interface AuthState {
   session: Session | null;
   roles: Role[];
+  /** The operator's app_users.id (for authoring notes / assignments). */
+  appUserId: string | null;
   loading: boolean;
   configured: boolean;
   hasRole: (allowed: Role[]) => boolean;
@@ -14,43 +16,52 @@ interface AuthState {
 }
 
 const AuthContext = createContext<AuthState>({
-  session: null, roles: [], loading: true, configured: isConfigured,
+  session: null, roles: [], appUserId: null, loading: true, configured: isConfigured,
   hasRole: () => false, signOut: async () => {},
 });
 
-async function fetchRoles(): Promise<Role[]> {
+async function fetchIdentity(authUserId: string): Promise<{ appUserId: string | null; roles: Role[] }> {
   try {
-    // app_users → user_roles for the signed-in operator (RLS scopes the read).
-    const { data } = await supabase
-      .from('user_roles')
-      .select('role, app_users!inner(auth_user_id)');
-    return ((data ?? []) as Array<{ role: Role }>).map((r) => r.role);
+    // app_users self_read + user_roles roles_read RLS scope these to the operator.
+    const [{ data: au }, { data: rs }] = await Promise.all([
+      supabase.from('app_users').select('id').eq('auth_user_id', authUserId).maybeSingle(),
+      supabase.from('user_roles').select('role'),
+    ]);
+    return {
+      appUserId: (au as { id: string } | null)?.id ?? null,
+      roles: ((rs ?? []) as Array<{ role: Role }>).map((r) => r.role),
+    };
   } catch {
-    return [];
+    return { appUserId: null, roles: [] };
   }
 }
 
 export function AuthProvider({ children }: { children: ReactNode }) {
   const [session, setSession] = useState<Session | null>(null);
   const [roles, setRoles] = useState<Role[]>([]);
+  const [appUserId, setAppUserId] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
     if (!isConfigured) { setLoading(false); return; }
     supabase.auth.getSession().then(async ({ data }) => {
       setSession(data.session);
-      if (data.session) setRoles(await fetchRoles());
+      if (data.session) {
+        const id = await fetchIdentity(data.session.user.id);
+        setRoles(id.roles); setAppUserId(id.appUserId);
+      }
       setLoading(false);
     });
     const { data: sub } = supabase.auth.onAuthStateChange(async (_e, s) => {
       setSession(s);
-      setRoles(s ? await fetchRoles() : []);
+      if (s) { const id = await fetchIdentity(s.user.id); setRoles(id.roles); setAppUserId(id.appUserId); }
+      else { setRoles([]); setAppUserId(null); }
     });
     return () => sub.subscription.unsubscribe();
   }, []);
 
   const value: AuthState = {
-    session, roles, loading, configured: isConfigured,
+    session, roles, appUserId, loading, configured: isConfigured,
     hasRole: (allowed) => roles.some((r) => allowed.includes(r)),
     signOut: async () => { await supabase.auth.signOut(); },
   };

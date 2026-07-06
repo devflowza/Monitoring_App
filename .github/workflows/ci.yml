@@ -30,7 +30,8 @@ jobs:
           deno-version: v2.x
       - name: Run pure-logic tests
         run: >-
-          deno test
+          deno test --allow-read
           supabase/functions/_shared/dlp/engine_test.ts
+          supabase/functions/_shared/dlp/eval/eval_test.ts
           supabase/functions/_shared/risk/score_test.ts
           supabase/functions/_shared/connectors/types_test.ts

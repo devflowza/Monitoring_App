@@ -4,7 +4,7 @@
 // PDF export to Storage is a planned follow-up (narrative is stored now).
 // Invoked by pg_cron (daily/weekly) or on demand.
 
-import { adminClient } from '../_shared/db.ts';
+import { adminClient, withRun } from '../_shared/db.ts';
 import { generateReport } from '../_shared/claude/index.ts';
 import { guardRequest } from '../_shared/authz.ts';
 
@@ -12,6 +12,7 @@ Deno.serve(async (req) => {
   const denied = guardRequest(req);
   if (denied) return denied;
   const db = adminClient();
+  const result = await withRun(db, 'report-generate', async () => {
   const body = await req.json().catch(() => ({})) as { type?: string };
   const type = body.type ?? 'daily';
   const days = type === 'weekly' ? 7 : type === 'monthly' ? 30 : 1;
@@ -51,5 +52,7 @@ Deno.serve(async (req) => {
     narrative_md: narrative, generated_by_model: 'claude-opus-4-8', status: 'final',
   }).select('id').single();
 
-  return Response.json({ reportId: rep?.id, type });
+  return { recordsProcessed: 1, detail: { reportId: rep?.id, type } };
+  });
+  return Response.json(result.detail);
 });

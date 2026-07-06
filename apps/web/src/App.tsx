@@ -12,6 +12,7 @@ import { Reports } from './routes/Reports';
 import { Employees } from './routes/Employees';
 import { EmployeeDetail } from './routes/EmployeeDetail';
 import { Settings } from './routes/Settings';
+import { System } from './routes/System';
 
 function Shell() {
   const { loading, session, configured } = useAuth();
@@ -34,6 +35,7 @@ function Shell() {
         <Route path="/finance" element={<Finance />} />
         <Route path="/security" element={<Security />} />
         <Route path="/reports" element={<Reports />} />
+        <Route path="/system" element={<System />} />
         <Route path="/settings" element={<Settings />} />
         <Route path="*" element={<Navigate to="/executive" replace />} />
       </Route>
