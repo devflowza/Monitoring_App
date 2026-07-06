@@ -20,6 +20,7 @@ const TYPE_TO_FACTOR: Record<string, string> = {
   finance_suspicious: 'finance_suspicion',
   anomaly: 'offhours_anomaly',
   login_anomaly: 'offhours_anomaly',
+  competitor_contact: 'competitor_contact',
 };
 const CAP = 5; // incidents/30d that saturate a factor at 1.0
 

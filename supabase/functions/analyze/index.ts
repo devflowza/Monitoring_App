@@ -70,11 +70,17 @@ Deno.serve(async (req) => {
   const { data: unmon } = await db.from('employees').select('id').eq('is_monitored', false);
   const unmonitored = new Set((unmon ?? []).map((e) => e.id as string));
 
+  // Competitor-contact (A1): refresh is_competitor from the domains policy, then
+  // load the flagged identity set for recipient matching.
+  await db.rpc('app_sync_competitor_flags');
+  const { data: comps } = await db.from('identities').select('id').eq('is_competitor', true);
+  const competitorIds = new Set((comps ?? []).map((c) => c.id as string));
+
   const since = new Date(Date.now() - 24 * 3600 * 1000).toISOString();
 
   // --- 1-3. DLP over recent outbound email to external recipients ----------
   const { data: emails } = await db.from('email_events')
-    .select('id, subject, snippet, body_ref, content_class, owner_employee_id, owner_department_id, external_recipient_count, is_personal_account_contact')
+    .select('id, subject, snippet, body_ref, content_class, owner_employee_id, owner_department_id, external_recipient_count, is_personal_account_contact, to_identity_ids, cc_identity_ids')
     .eq('direction', 'outbound')
     .gt('external_recipient_count', 0)
     .gte('sent_at', since)
@@ -158,6 +164,34 @@ Deno.serve(async (req) => {
         dlpAlerts++;
         flagged = true;
       }
+
+      // F5: persist every match (deduped) so precision/recall + rule tuning are
+      // measurable and triage outcomes can flow back to rules.
+      await db.from('dlp_matches').upsert(
+        matches.map((mm) => ({
+          email_event_id: ev.id, rule_id: mm.ruleId, category: mm.category,
+          matched_on: mm.matchedOn, excerpt: mm.excerpt,
+          escalated: mm.ruleId === top.ruleId && top.requiresClaudeConfirm,
+          verdict_json: mm.ruleId === top.ruleId ? { adjudication, confidence } : {},
+        })),
+        { onConflict: 'email_event_id,rule_id,matched_on' },
+      );
+    }
+
+    // A1: recipient resolves to a flagged competitor → alert (critical if the
+    // same email also disclosed data, i.e. a rate sheet went to a rival).
+    const recipientIds = [...(ev.to_identity_ids ?? []), ...(ev.cc_identity_ids ?? [])] as string[];
+    if (recipientIds.some((rid) => competitorIds.has(rid))) {
+      await raiseAlert(db, {
+        alertType: 'competitor_contact',
+        severity: flagged ? 'critical' : 'high',
+        title: 'Email sent to a flagged competitor contact',
+        summary: flagged ? 'Confidential-data match on an email to a competitor' : 'Outbound email to a competitor domain',
+        employeeId: ev.owner_employee_id, departmentId: ev.owner_department_id,
+        sourceEventTable: 'email_events', sourceEventId: ev.id,
+        evidence: { withDisclosure: flagged, recipients: ev.external_recipient_count },
+        dedupKey: `competitor:${ev.id}`,
+      });
     }
 
     // Data minimization: only flagged messages retain their stored body.

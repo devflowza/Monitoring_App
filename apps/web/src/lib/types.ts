@@ -161,3 +161,13 @@ export interface Policy {
   policy_key: string;
   value_json: { value?: unknown } & Record<string, unknown>;
 }
+
+export interface DlpRuleStat {
+  rule_id: string;
+  name: string;
+  category: string;
+  fired: number;
+  false_positives: number;
+  resolved: number;
+  fp_rate: number;
+}

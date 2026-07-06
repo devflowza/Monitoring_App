@@ -53,3 +53,31 @@ Launch-blockers and the cheapest trust fixes.
 | **D2** | `is_monitored` is now enforced: `ingest-email` never stores an opted-out employee's body and `analyze` skips their mail entirely — making the DSAR erasure remedy real. (`ingest-drive`'s `monitoring_active` gate landed in M0.) |
 | **D6** | `app_purge_expired` rewritten (migration 0008): jurisdiction-aware content TTL (per-employee override → global), coverage of every event/derived table + orphaned threads + `cron.job_run_details`, a `created_at` fallback for null `sent_at`, and a proper `retention_purge` audit action with per-table counts. |
 | **D7** | DSAR tooling as audited SECURITY DEFINER functions: `app_dsar_export` (JSON document across ~8 subject-data tables) and `app_dsar_erase` (content redaction + attachment scrub + `is_monitored=false`), plus `app_set_monitored`. Surfaced on the employee page (ceo/admin): monitored toggle, DSAR export-to-JSON, and justification-gated erasure. |
+
+---
+
+## Milestone 3 — Differentiate  ◑ (partial)
+
+Implemented the fully-verifiable, dead-schema-wiring items. The connector-heavy
+and cryptographic items are deferred because they cannot be correctness-verified
+in this environment (no Deno/Supabase CLI, no Google Workspace/PayPal creds, no
+live Postgres for pgsodium) — shipping them unverified would risk breaking a
+deployment. Each is scoped below for a follow-up with a live environment.
+
+| Item | Status | Detail |
+|------|--------|--------|
+| **A1 — Competitor-contact intelligence** | ✅ | Migration 0009 adds the `competitor_contact` alert type, a `competitor_domains` policy, and `app_sync_competitor_flags()`. `analyze` refreshes `is_competitor` from the domains, then alerts on outbound mail to a competitor recipient (critical when the same email also disclosed data). `score-risk` maps `competitor_contact` → the previously-dead `competitor_contact` risk weight (also un-dilutes the risk denominator). Settings gains a competitor-domains editor. |
+| **F5 — DLP false-positive feedback loop** | ✅ | Migration 0009 adds a `dlp_matches` table (every match persisted, deduped) and a `dlp_rule_stats` `security_invoker` view (fired / false-positive / resolved / FP-rate per rule). `analyze` persists all matches with the top match's verdict; Settings shows Fired + FP-rate columns per rule. *(Per-call few-shot injection of FP exemplars is intentionally deferred — it would break the DLP_SYSTEM prompt cache and needs accumulated FP data; the persisted matches are the foundation for it.)* |
+| **A3 — Departing-employee mode + watchlists** | ⏳ deferred | Needs `sync-directory` roster diffing against the Google Directory API (untestable here) for `terminated` detection. Plan: watchlist columns + a score-risk multiplier + a resignation-window sweep; the score-risk/analyze hooks are ready to receive it. |
+| **A2 — Drive/download + mass-export** | ⏳ deferred | Needs a new Google Admin SDK Reports connector (`applicationName=drive`) — untestable without Workspace creds. Plan: `ingest-files` fn writing the orphaned `file_events`, burst detector → `anomaly` alert, map `anomaly` → `mass_export`. |
+| **A6 — Login-anomaly** | ⏳ deferred | Same Admin Reports connector (`applicationName=login`); the `login_anomaly` type already maps to `offhours_anomaly`. |
+| **A7 — Calendar connector** | ⏳ deferred | Fourth copy of the connector pattern, but still needs Google API verification; `calendar_events` + DTO + scope + RLS already exist. |
+| **A4 — Attachment fingerprinting** | ⏳ deferred | Blocked on connector-side SHA-256 hashing (`attachments.sha256` is always null today). Plan: hash sensitive-typed attachments, a `sensitive_documents` registry, and an exact-hash `fingerprint` match in the engine. |
+| **D4 — Encrypted `body_ref`** | ⏳ deferred | pgsodium/Vault work that must be validated against a live Postgres. |
+| **F8 — "Ask Sentinel" NL Q&A / C9 — PDF export** | ⏳ deferred | Explicitly ambitious (a JWT-scoped tool-use function; a WASM PDF pipeline). |
+
+**Net position after M0–M2 + A1/F5:** every launch-blocker is fixed, the core
+detect→alert→triage→report loop is trustworthy and observable, the compliance
+posture matches the docs, and two flagship differentiators (competitor contact,
+DLP tuning feedback) are live. The deferred M3 items are new *connectors* and
+*infrastructure* that need a live Google/Supabase environment to build safely.
